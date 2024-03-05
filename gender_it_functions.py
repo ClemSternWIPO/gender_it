@@ -96,7 +96,8 @@ def reading_wgnd (dictionnary, path):
     if dictionnary == 2:
         try:    
             print("reading the dictionnary.")
-            data = pd.concat(map(pd.read_csv, [path + 'd2_1.csv.gz',path + 'd2_2.csv.gz',path + 'd2_3.csv.gz']))
+            data = pd.read_csv(path + 'd2.csv.gz', compression="gzip" )
+            #data = pd.concat(map(pd.read_csv, [path + 'd2_1.csv.gz',path + 'd2_2.csv.gz',path + 'd2_3.csv.gz']))
         except:
             print("downloading the dictionnary.")
             s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750350').content
