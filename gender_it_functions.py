@@ -114,151 +114,205 @@ def reading_wgnd (dictionnary, path):
 
 
 
-def get_gender(df, name_column, country_column = False,  split = True, split_sep = ' ', treshold = 0.6, path = 'gender_it/dictionaries/'): 
-    df = df.reset_index(drop=True) ### in case of multiple index
-    df = df.reset_index(names = 'name_id') ### we need the name_id to reconnect to final results
+def get_gender(df, name_column, country_column=False, split=True, split_sep=' ', threshold=0.6, path='gender_it/dictionaries/'):
+    # Reset index to handle potential multi-index DataFrame and add a unique identifier for each row
+    df = df.reset_index(drop=True).reset_index(names='name_id')
+    null_lines = df[count_missing_values(df, name_column)].shape[0]
+    print(f'WARNING: {null_lines} without names.')
+
+    # Store a copy of the original DataFrame for merging the results later
     original = df.copy()
-    if country_column != False:
-        df = df[['name_id',name_column, country_column]]
+
+    # Select relevant columns, include the country column if provided
+    if country_column:
+        df = df[['name_id', name_column, country_column]]
     else:
-        df = df[['name_id',name_column]]
-    df['clean_name'] = df.apply(lambda x: multi_clean_name_function(x[name_column]), axis = 1 )
-    del df[name_column]
+        df = df[['name_id', name_column]]
+
+    # Clean the name column using the external cleaning function
+    df['clean_name'] = df[name_column].apply(multi_clean_name_function)
+    df = df.drop(columns=[name_column])  # Remove the original name column for further processing
+
+    # Split the clean_name into individual names if specified
     df = df.explode('clean_name')
-    if split == True:
+    if split:
         df['clean_name'] = df['clean_name'].str.split(split_sep)
-        df = df.explode('clean_name')
-        df['surname_position'] = df.groupby('name_id').cumcount() + 1
-    if country_column != False:
-        dff = df[~(df[country_column].isnull())]
-        dff [country_column] = dff [country_column].astype(str)
-        dff ['clean_country_column'] =  dff[country_column].apply(lambda x: clean_country_function(x) )
-        del dff [country_column]
-        dfn = df[(df[country_column].isnull())]
-        del df
-        del dfn[country_column]
+        df = df.explode('clean_name')  # Split each name into individual components
+        df['surname_position'] = df.groupby('name_id').cumcount() + 1  # Track the position of each name part
+
+    # Handle the presence of a country column
+    if country_column:
+        # Define a regex pattern to match valid two-letter country codes
+        pattern = r'^[A-Z]{2}$'
+        # Separate rows with valid two-letter country codes
+        dff = df[df[country_column].str.upper().str.match(pattern, na=False)].copy()
+        dff[country_column] = dff[country_column].astype(str)
+        # Clean the country column values using the external cleaning function
+        dff['clean_country_column'] = dff[country_column].apply(clean_country_function)
+        dff = dff.drop(columns=[country_column])  # Remove the original country column
+        # Separate rows without valid two-letter country codes (null, empty, non-matching values)
+        dfn = df[~df[country_column].str.upper().str.match(pattern, na=False)].copy()
+        dfn = dfn.drop(columns=[country_column])
+        print('WARNING:',len(dfn['name_id'].unique()), 'without country_codes.')
     else:
+        # If no country column is provided, use a copy of the DataFrame
         dfn = df.copy()
-        del df
-    #######################################################################################################################
-    ############################################################################ FIRST TRY
-    #######################################################################################################################
-    if country_column != False:
-        print('Step 1 - reading the name-country-gender dictionary')
-        data = reading_wgnd (1, path)
-        data = data.rename(columns = {'name':'clean_name','code':'clean_country_column'})
-        data = data [data['clean_name'].isin(list(dff['clean_name']))]
-        data = data [data['clean_country_column'].isin(list(dff['clean_country_column']))]
-        cols = unique(data['gender'].tolist())
-        data = data.drop_duplicates(subset = ('clean_name','clean_country_column'))
-        data = data.pivot(index=['clean_name','clean_country_column'], columns="gender", values="wgt").reset_index()
-        found = data.merge(dff, on = ('clean_name','clean_country_column'))
-        found = found[(found[cols] > treshold).any(axis = 1)]
-        del data
-        try:
-            found  = found.sort_values('surname_position', ascending = True).drop_duplicates(subset = 'name_id')
-            del found['surname_position']
-        except:
-            found = found.drop_duplicates(subset = 'name_id')
-        dff = dff [~(dff['name_id'].isin(list(found['name_id'])))]
-        found['level'] = 1
-        found= found.fillna(0)
-        #######################################################################################################################
-        ################################################################################# Second Try
-        #######################################################################################################################
-        print('Step 2 - reading the name-language-gender dictionary')
-        data = reading_wgnd (2, path)
-        data = data.rename(columns = {'name':'clean_name','code':'clean_country_column'})
-        data = data [data['clean_name'].isin(list(dff['clean_name']))]
-        data = data [data['clean_country_column'].isin(list(dff['clean_country_column']))]
-        data = data.drop_duplicates(subset = ('clean_name','clean_country_column'))
-        res = data.merge(dff, on = ('clean_name','clean_country_column'))
-        res = res.sort_values('surname_position', ascending = True).drop_duplicates(subset = 'name_id')
-        del res['surname_position']
-        res['wgt'] = 1
-        res = res.pivot(index=['clean_name','clean_country_column','name_id'], columns="gender", values="wgt").reset_index()
-        res['level'] = 2
-        res= res.fillna(0)
-        del data
-        found = pd.concat([found,res])
-        dff = dff [~(dff['name_id'].isin(list(found['name_id'])))]
-        del res
-        if len (dff) > 0:
-            try:
-                dfn = pd.concat([dff, dfn])
-            except:
-                dfn = dff.copy()
-                del dff
-        #######################################################################################################################
-        ######################################################################################### LAST CHANCE / Direct try
-    try :
-        dfn = dfn [~(dfn['name_id'].isin(list(found['name_id'])))]
-    except:
-        pass
-    print('Step 3 - reading the name-gender dictionary.')
-    data = reading_wgnd (3, path)
-    data = data.rename(columns = {'name':'clean_name'})
-    data = data [data['clean_name'].isin(list(dfn['clean_name']))]
-    ##### Filter on relevant data
-    res = data.merge(dfn, on = 'clean_name')
-    del data
-    res = res.sort_values('surname_position', ascending = True).drop_duplicates(subset = 'name_id')
-    res['wgt'] = 1
-    try:
-        res = res.pivot(index=['name_id','clean_name','clean_country_column'], columns="gender", values="wgt").reset_index()
-    except:
-        res = res.pivot(index=['name_id','clean_name'], columns="gender", values="wgt").reset_index()
-    res ['level'] = 3
-    try:
-        found = pd.concat([res, found])
-    except:
-        found = res.copy()
-    not_found =  dfn [~(dfn['name_id'].isin(list(found['name_id'])))]
-    not_found = not_found.drop_duplicates(subset = 'name_id')
-    del res
-    del dfn
-    #######################################################################################################################
-    ######################################################################################### MERGING RESULTS
-    ########################################################################################################################
+
+    # Initialize cols for later use
     cols = []
-    try :
-        not_found ['F'] = 'not found'
-        found ['F']= found['F'].fillna(0)
-        cols.append('F')
-    except:
-        pass
-    try :
-        not_found ['M'] =  'not found'
-        found ['M']= found['M'].fillna(0)
-        cols.append('M')
-    except:
-        pass
+    
+    # Step 1: Try to find gender using the name-country-gender dictionary
+    found = pd.DataFrame()  # Initialize found to ensure it's defined before being used
+    if country_column:
+        print('Step 1 - Reading the name-country-gender dictionary')
+        data = reading_wgnd(1, path)
+        data = data.rename(columns={'name': 'clean_name', 'code': 'clean_country_column'})
+        
+        # Filter the dictionary to include only relevant names and countries
+        data = data[data['clean_name'].isin(dff['clean_name'])]
+        data = data[data['clean_country_column'].isin(dff['clean_country_column'])]
+        
+        # Remove duplicates and pivot to structure gender probabilities
+        data = data.drop_duplicates(subset=['clean_name', 'clean_country_column'])
+        data = data.pivot(index=['clean_name', 'clean_country_column'], columns="gender", values="wgt").reset_index()
+
+        # Merge with the DataFrame to find matches
+        found = data.merge(dff, on=['clean_name', 'clean_country_column'])
+        cols = list(data.columns[2:])  # Get gender columns after pivot
+        found = found[(found[cols] > threshold).any(axis=1)]  # Apply the threshold for gender probability
+        
+        # Sort by name position and drop duplicates
+        found = found.sort_values('surname_position', ascending=True).drop_duplicates(subset='name_id')
+        found['level'] = 1  # Mark the results level for later use
+        found = found.fillna(0)  # Fill NaNs with zero for further processing
+
+        # Remove found entries from the main DataFrame
+        dff = dff[~dff['name_id'].isin(found['name_id'])]
+
+    # Step 2: Attempt to find gender using the name-language-gender dictionary
+    if country_column:
+        print('Step 2 - Reading the name-language-gender dictionary')
+        data = reading_wgnd(2, path)
+        data = data.rename(columns={'name': 'clean_name', 'code': 'clean_country_column'})
+        
+        # Filter the dictionary to include relevant names and languages
+        data = data[data['clean_name'].isin(dff['clean_name'])]
+        data = data[data['clean_country_column'].isin(dff['clean_country_column'])]
+        
+        # Remove duplicates and merge with the DataFrame
+        data = data.drop_duplicates(subset=['clean_name', 'clean_country_column'])
+        res = data.merge(dff, on=['clean_name', 'clean_country_column'])
+        
+        # Sort and drop duplicates based on name ID
+        res = res.sort_values('surname_position', ascending=True).drop_duplicates(subset='name_id')
+        res['wgt'] = 1  # Assign a weight of 1 for found results
+        res = res.pivot(index=['clean_name', 'clean_country_column', 'name_id'], columns="gender", values="wgt").reset_index()
+        res['level'] = 2  # Mark the results level
+
+        # Append to the previously found results and update DataFrame to exclude found entries
+        found = pd.concat([found, res])
+        dff = dff[~dff['name_id'].isin(found['name_id'])]
+
+    # Step 3: Directly attempt to find gender using the name-gender dictionary
+    print('Step 3 - Reading the name-gender dictionary')
+    data = reading_wgnd(3, path)
+    data = data.rename(columns={'name': 'clean_name'})
+    #print(data.sample())
+
+    # add unfound data into dfn
+    if len(dff) > 0:
+        print('dff', dff.sample())
+        dfn = pd.concat([dff, dfn])
+        #del dfn[country_column]
+        dfn = dfn.drop_duplicates(subset='name_id')
+    # Filter to include relevant names
+    data = data[data['clean_name'].isin(dfn['clean_name'])]
+
+    # Merge with the DataFrame to find matches
+    res = data.merge(dfn, on='clean_name', how='inner')
+    #print('Step 3:', len(res))
+
+    # Sort and drop duplicates based on name ID
+    res = res.sort_values('surname_position', ascending=True).drop_duplicates(subset='name_id')
+    res['wgt'] = 1  # Assign a weight of 1 for found results
+
+    # Pivot to organize gender information
     try:
-        not_found ['?'] =  'not found'
-        found ['?']= found['?'].fillna(0)
-        cols.append('?')
-    except:
-        pass
+        res = res.pivot(index=['name_id', 'clean_name', 'clean_country_column'], columns="gender", values="wgt").reset_index()
+    except KeyError:
+        res = res.pivot(index=['name_id', 'clean_name'], columns="gender", values="wgt").reset_index()
+
+    res['level'] = 3  # Mark the results level
+
+    # Append to the found results
+    found = pd.concat([found, res], ignore_index=True)
+
+    # Identify and prepare not found entries
+    not_found = dfn[~dfn['name_id'].isin(found['name_id'])]
+    not_found = not_found.drop_duplicates(subset='name_id')
+    #print('Step 3: errors', len(not_found))
+    
+    # Initialize gender columns for not found entries
+    for gender_col in ['F', 'M', '?']:
+        if gender_col in found.columns:
+            found[gender_col] = found[gender_col].fillna(0)
+            not_found[gender_col] = 0
+            if gender_col not in cols:
+                cols.append(gender_col)
+
+    # Set proper level and gender for not found entries
+    not_found['level'] = 3
+    not_found['gender'] = 'not found'
+
+    # Determine gender for found entries
     found['gender'] = found[cols].idxmax(axis=1)
-    res_final = pd.concat([not_found, found])
-    res_final = res_final.merge(original, on = 'name_id')
-    del original['name_id']
-    res_final = res_final.sort_values('name_id', ascending = True)
-    s =  res_final  ['name_id']
-    res_final.set_index( [s, s/s])
-    del res_final  ['name_id']
-    res_final['gender'] = res_final['gender'].fillna('not found')
-    h = res_final['gender'].value_counts()
-    h = pd.DataFrame(h)
-    h ['Percentage'] = ((h['gender'] / len(original))*100 )
+    
+    # Prepare final columns
+    result_columns = ['name_id', 'level', 'gender'] + cols
+    if 'clean_name' in found.columns:
+        result_columns.append('clean_name')
+    if 'clean_country_column' in found.columns:
+        result_columns.append('clean_country_column')
+    if 'surname_position' in found.columns:
+        result_columns.append('surname_position')
+
+    # Ensure not_found has all necessary columns
+    for col in result_columns:
+        if col not in not_found.columns and col not in ['gender', 'level'] + cols:
+            not_found[col] = None
+
+    # Select columns for found and not_found
+    found = found[result_columns]
+    not_found = not_found[result_columns]
+    
+    # Combine found and not found results
+    res_final = pd.concat([found, not_found])
+    
+    # Merge with original DataFrame
+    res_final = res_final.merge(original, on='name_id', how='right')
+    
+    # Clean up the final DataFrame
+
+    res_final = res_final.drop(columns=['clean_name', 'clean_country_column', 'surname_position'], errors='ignore')
+
+
+# Filtrer uniquement les lignes avec des valeurs valides dans 'gender'
+    #res_final['gender'] = res_final['gender'].astype(str)
+
+
     try:
-        del res_final['clean_name']
-        del res_final ['clean_country_column']
-        del res_final['surname_position']
-    except:
-        pass
-    print ('Results distirbution is as follow:','\n',h)
-    cols_2 = list(original.columns) +  ['level', 'gender'] + cols
-    res_final = res_final [cols_2] 
+        if 'gender' in res_final.columns:
+            h = res_final['gender'].value_counts()
+            h = pd.DataFrame(h)
+            h['Percentage'] = (h['count'] / len(original)) * 100
+            print('Results distribution is as follows:\n', h)
+        else:
+            print("La colonne 'gender' est absente de filtered_res_final")
+    except KeyError as e:
+        print(f"Erreur: {e}")
+
+    # Drop name_id at the very end
+    res_final = res_final.drop(columns=['name_id'], errors='ignore')
+    
     return res_final
 
