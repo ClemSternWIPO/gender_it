@@ -7,39 +7,11 @@ pd.options.mode.chained_assignment = None
 import numpy as np
 import re
 import unicodedata as ud
-
-def read_wgnd(path = False, All = True):
-    if  path == False and All == True :
-        s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750348').content
-        d1 = pd.read_csv(StringIO(s.decode('utf-8')),sep = '\t')
-        print('saving first dictionnary.')
-        d1.to_csv("d1.csv.gz", index=False, compression="gzip") 
-        s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750350').content
-        d2 = pd.read_csv(StringIO(s.decode('utf-8')),sep = ',')
-        d2.to_csv( "d2.csv.gz", index=False, compression="gzip") 
-        print('saving second dictionnary.')
-        s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750351').content
-        d3 = pd.read_csv(StringIO(s.decode('utf-8')),sep = '\t')
-        d3.to_csv("d3.csv.gz", index=False, compression="gzip")
-        print('saving third dictionnary.')
-    elif path != False and All == True:
-        s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750348').content
-        d1 = pd.read_csv(StringIO(s.decode('utf-8')),sep = '\t')
-        print('saving first dictionnary.')
-        d1.to_csv(path + "d1.csv.gz", index=False, compression="gzip") 
-        s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750350').content
-        d2 = pd.read_csv(StringIO(s.decode('utf-8')),sep = ',')
-        d2.to_csv(path + "d2.csv.gz", index=False, compression="gzip") 
-        print('saving second dictionnary.')
-        s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750351').content
-        d3 = pd.read_csv(StringIO(s.decode('utf-8')),sep = '\t')
-        d3.to_csv(path + "d3.csv.gz", index=False, compression="gzip")
-        print('saving third dictionnary.')
-    elif All != True:
-        s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750351').content
-        d3 = pd.read_csv(StringIO(s.decode('utf-8')),sep = '\t')
-        d3.to_csv(path + "d3.csv.gz", index=False, compression="gzip")
-    print ('All dictionaries saved!')
+from ast import literal_eval
+import seaborn as sns
+import os
+import requests
+from io import StringIO
 
     
     
@@ -88,7 +60,7 @@ def reading_wgnd (dictionnary, path):
     if dictionnary == 1:
         try: 
             print("reading the dictionnary.")
-            data = pd.read_csv(path + 'd1.csv.gz', compression="gzip" ) ### find a way to change to local path        
+            data = pd.read_csv(path + 'd1.csv.gz', compression="gzip" ) ### find a way to change to local path   
         except:
             print("downloading the dictionnary.")
             s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750348').content
@@ -97,7 +69,6 @@ def reading_wgnd (dictionnary, path):
         try:    
             print("reading the dictionnary.")
             data = pd.read_csv(path + 'd2.csv.gz', compression="gzip" )
-            #data = pd.concat(map(pd.read_csv, [path + 'd2_1.csv.gz',path + 'd2_2.csv.gz',path + 'd2_3.csv.gz']))
         except:
             print("downloading the dictionnary.")
             s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750350').content
@@ -113,11 +84,60 @@ def reading_wgnd (dictionnary, path):
     return data
 
 
+def read_wgnd(path=False, All=True):
+    # Définitions des noms de fichiers
+    file1 = os.path.join(path or '', "d1.csv.gz")
+    file2 = os.path.join(path or '', "d2.csv.gz")
+    file3 = os.path.join(path or '', "d3.csv.gz")
 
-def get_gender(df, name_column, country_column=False, split=True, split_sep=' ', threshold=0.6, path='gender_it/dictionaries/', first_name=True):
+    if All:
+        # Vérifier et télécharger chaque fichier uniquement s'il est absent
+        if not os.path.exists(file1):
+            print('Downloading and saving first dictionary...')
+            s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750348').content
+            d1 = pd.read_csv(StringIO(s.decode('utf-8')), sep='\t')
+            d1.to_csv(file1, index=False, compression="gzip")
+        else:
+            print('First dictionary already exists.')
+
+        if not os.path.exists(file2):
+            print('Downloading and saving second dictionary...')
+            s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750350').content
+            d2 = pd.read_csv(StringIO(s.decode('utf-8')), sep=',')
+            d2.to_csv(file2, index=False, compression="gzip")
+        else:
+            print('Second dictionary already exists.')
+
+        if not os.path.exists(file3):
+            print('Downloading and saving third dictionary...')
+            s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750351').content
+            d3 = pd.read_csv(StringIO(s.decode('utf-8')), sep='\t')
+            d3.to_csv(file3, index=False, compression="gzip")
+        else:
+            print('Third dictionary already exists.')
+
+    else:
+        # Si 'All' est False, on ne télécharge que le troisième dictionnaire
+        if not os.path.exists(file3):
+            print('Downloading and saving third dictionary...')
+            s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750351').content
+            d3 = pd.read_csv(StringIO(s.decode('utf-8')), sep='\t')
+            d3.to_csv(file3, index=False, compression="gzip")
+        else:
+            print('Third dictionary already exists.')
+
+    print('All required dictionaries are saved!')
+
+
+
+def count_missing_values(df, column_name):
+    return df[column_name].isnull() | (df[column_name].astype(str).str.strip() == '')
+
+
+def get_gender(df, name_column, country_column=False, split=True, split_sep=' ', threshold=0.6, path='gender_it/dictionaries/'):
     # Reset index to handle potential multi-index DataFrame and add a unique identifier for each row
     df = df.reset_index(drop=True).reset_index(names='name_id')
-    null_lines = df[count_missing_values(df, name_column)].shape[0]
+    null_lines = df[name_column].isna().sum()
     print(f'WARNING: {null_lines} without names.')
 
     # Store a copy of the original DataFrame for merging the results later
@@ -128,6 +148,9 @@ def get_gender(df, name_column, country_column=False, split=True, split_sep=' ',
         df = df[['name_id', name_column, country_column]]
     else:
         df = df[['name_id', name_column]]
+    
+    # Initialize `dff` as an empty DataFrame to avoid UnboundLocalError
+    dff = pd.DataFrame()
 
     # Clean the name column using the external cleaning function
     df['clean_name'] = df[name_column].apply(multi_clean_name_function)
@@ -142,41 +165,50 @@ def get_gender(df, name_column, country_column=False, split=True, split_sep=' ',
 
     # Handle the presence of a country column
     if country_column:
+        # Define a regex pattern to match valid two-letter country codes
         pattern = r'^[A-Z]{2}$'
+        # Separate rows with valid two-letter country codes
         dff = df[df[country_column].str.upper().str.match(pattern, na=False)].copy()
         dff[country_column] = dff[country_column].astype(str)
+        # Clean the country column values using the external cleaning function
         dff['clean_country_column'] = dff[country_column].apply(clean_country_function)
         dff = dff.drop(columns=[country_column])  # Remove the original country column
+        # Separate rows without valid two-letter country codes (null, empty, non-matching values)
         dfn = df[~df[country_column].str.upper().str.match(pattern, na=False)].copy()
         dfn = dfn.drop(columns=[country_column])
         print('WARNING:', len(dfn['name_id'].unique()), 'without country_codes.')
     else:
+        # If no country column is provided, use a copy of the DataFrame
         dfn = df.copy()
-
     # Initialize cols for later use
     cols = []
     
     # Step 1: Try to find gender using the name-country-gender dictionary
-    found = pd.DataFrame()
+    found = pd.DataFrame()  # Initialize found to ensure it's defined before being used
     if country_column:
         print('Step 1 - Reading the name-country-gender dictionary')
         data = reading_wgnd(1, path)
         data = data.rename(columns={'name': 'clean_name', 'code': 'clean_country_column'})
         
+        # Filter the dictionary to include only relevant names and countries
         data = data[data['clean_name'].isin(dff['clean_name'])]
         data = data[data['clean_country_column'].isin(dff['clean_country_column'])]
         
+        # Remove duplicates and pivot to structure gender probabilities
         data = data.drop_duplicates(subset=['clean_name', 'clean_country_column'])
         data = data.pivot(index=['clean_name', 'clean_country_column'], columns="gender", values="wgt").reset_index()
 
+        # Merge with the DataFrame to find matches
         found = data.merge(dff, on=['clean_name', 'clean_country_column'])
-        cols = list(data.columns[2:])
-        found = found[(found[cols] > threshold).any(axis=1)]
+        cols = list(data.columns[2:])  # Get gender columns after pivot
+        found = found[(found[cols] > threshold).any(axis=1)]  # Apply the threshold for gender probability
         
-        found = found.sort_values('surname_position', ascending=first_name).drop_duplicates(subset='name_id')
-        found['level'] = 1
-        found = found.fillna(0)
+        # Sort by name position and drop duplicates
+        found = found.sort_values('surname_position', ascending=True).drop_duplicates(subset='name_id')
+        found['level'] = 1  # Mark the results level for later use
+        found = found.fillna(0)  # Fill NaNs with zero for further processing
 
+        # Remove found entries from the main DataFrame
         dff = dff[~dff['name_id'].isin(found['name_id'])]
 
     # Step 2: Attempt to find gender using the name-language-gender dictionary
@@ -185,17 +217,21 @@ def get_gender(df, name_column, country_column=False, split=True, split_sep=' ',
         data = reading_wgnd(2, path)
         data = data.rename(columns={'name': 'clean_name', 'code': 'clean_country_column'})
         
+        # Filter the dictionary to include relevant names and languages
         data = data[data['clean_name'].isin(dff['clean_name'])]
         data = data[data['clean_country_column'].isin(dff['clean_country_column'])]
         
+        # Remove duplicates and merge with the DataFrame
         data = data.drop_duplicates(subset=['clean_name', 'clean_country_column'])
         res = data.merge(dff, on=['clean_name', 'clean_country_column'])
         
-        res = res.sort_values('surname_position', ascending=first_name).drop_duplicates(subset='name_id')
-        res['wgt'] = 1
+        # Sort and drop duplicates based on name ID
+        res = res.sort_values('surname_position', ascending=True).drop_duplicates(subset='name_id')
+        res['wgt'] = 1  # Assign a weight of 1 for found results
         res = res.pivot(index=['clean_name', 'clean_country_column', 'name_id'], columns="gender", values="wgt").reset_index()
-        res['level'] = 2
+        res['level'] = 2  # Mark the results level
 
+        # Append to the previously found results and update DataFrame to exclude found entries
         found = pd.concat([found, res])
         dff = dff[~dff['name_id'].isin(found['name_id'])]
 
@@ -204,27 +240,40 @@ def get_gender(df, name_column, country_column=False, split=True, split_sep=' ',
     data = reading_wgnd(3, path)
     data = data.rename(columns={'name': 'clean_name'})
 
+    # add unfound data into dfn
     if len(dff) > 0:
+        print('dff', dff.sample())
         dfn = pd.concat([dff, dfn])
+        #del dfn[country_column]
         dfn = dfn.drop_duplicates(subset='name_id')
+    # Filter to include relevant names
     data = data[data['clean_name'].isin(dfn['clean_name'])]
 
+    # Merge with the DataFrame to find matches
     res = data.merge(dfn, on='clean_name', how='inner')
-    res = res.sort_values('surname_position', ascending=first_name).drop_duplicates(subset='name_id')
-    res['wgt'] = 1
+    #print('Step 3:', len(res))
 
+    # Sort and drop duplicates based on name ID
+    res = res.sort_values('surname_position', ascending=True).drop_duplicates(subset='name_id')
+    res['wgt'] = 1  # Assign a weight of 1 for found results
+
+    # Pivot to organize gender information
     try:
         res = res.pivot(index=['name_id', 'clean_name', 'clean_country_column'], columns="gender", values="wgt").reset_index()
     except KeyError:
         res = res.pivot(index=['name_id', 'clean_name'], columns="gender", values="wgt").reset_index()
 
-    res['level'] = 3
+    res['level'] = 3  # Mark the results level
 
+    # Append to the found results
     found = pd.concat([found, res], ignore_index=True)
 
+    # Identify and prepare not found entries
     not_found = dfn[~dfn['name_id'].isin(found['name_id'])]
     not_found = not_found.drop_duplicates(subset='name_id')
+    #print('Step 3: errors', len(not_found))
     
+    # Initialize gender columns for not found entries
     for gender_col in ['F', 'M', '?']:
         if gender_col in found.columns:
             found[gender_col] = found[gender_col].fillna(0)
@@ -232,11 +281,14 @@ def get_gender(df, name_column, country_column=False, split=True, split_sep=' ',
             if gender_col not in cols:
                 cols.append(gender_col)
 
+    # Set proper level and gender for not found entries
     not_found['level'] = 3
     not_found['gender'] = 'not found'
 
+    # Determine gender for found entries
     found['gender'] = found[cols].idxmax(axis=1)
     
+    # Prepare final columns
     result_columns = ['name_id', 'level', 'gender'] + cols
     if 'clean_name' in found.columns:
         result_columns.append('clean_name')
@@ -245,18 +297,29 @@ def get_gender(df, name_column, country_column=False, split=True, split_sep=' ',
     if 'surname_position' in found.columns:
         result_columns.append('surname_position')
 
+    # Ensure not_found has all necessary columns
     for col in result_columns:
         if col not in not_found.columns and col not in ['gender', 'level'] + cols:
             not_found[col] = None
 
+    # Select columns for found and not_found
     found = found[result_columns]
     not_found = not_found[result_columns]
     
+    # Combine found and not found results
     res_final = pd.concat([found, not_found])
     
+    # Merge with original DataFrame
     res_final = res_final.merge(original, on='name_id', how='right')
     
+    # Clean up the final DataFrame
+
     res_final = res_final.drop(columns=['clean_name', 'clean_country_column', 'surname_position'], errors='ignore')
+
+
+# Filtrer uniquement les lignes avec des valeurs valides dans 'gender'
+    #res_final['gender'] = res_final['gender'].astype(str)
+
 
     try:
         if 'gender' in res_final.columns:
@@ -269,7 +332,10 @@ def get_gender(df, name_column, country_column=False, split=True, split_sep=' ',
     except KeyError as e:
         print(f"Erreur: {e}")
 
+    # Drop name_id at the very end
     res_final = res_final.drop(columns=['name_id'], errors='ignore')
     
     return res_final
+
+
 
