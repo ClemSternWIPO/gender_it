@@ -84,9 +84,22 @@ def reading_wgnd (dictionnary, path):
     return data
 
 
+import os
+import pandas as pd
+import requests
+from io import StringIO
+
+import os
+import requests
+import pandas as pd
+from io import StringIO
+
 def read_wgnd(path=False, All=True):
     # Définitions des noms de fichiers
     file1 = os.path.join(path or '', "d1.csv.gz")
+    file2_1 = os.path.join(path or '', "d2_1.csv.gz")
+    file2_2 = os.path.join(path or '', "d2_2.csv.gz")
+    file2_3 = os.path.join(path or '', "d2_3.csv.gz")
     file2 = os.path.join(path or '', "d2.csv.gz")
     file3 = os.path.join(path or '', "d3.csv.gz")
 
@@ -101,10 +114,35 @@ def read_wgnd(path=False, All=True):
             print('First dictionary already exists.')
 
         if not os.path.exists(file2):
-            print('Downloading and saving second dictionary...')
-            s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750350').content
-            d2 = pd.read_csv(StringIO(s.decode('utf-8')), sep=',')
-            d2.to_csv(file2, index=False, compression="gzip")
+            # Vérifier et télécharger les trois fichiers du deuxième dictionnaire
+            all_d2_files_exist = os.path.exists(file2_1) and os.path.exists(file2_2) and os.path.exists(file2_3)
+            if all_d2_files_exist:
+                print('Concatenating second dictionary.')
+                d2 = pd.concat([pd.read_csv(file2_1, compression="gzip"),
+                                pd.read_csv(file2_2, compression="gzip"),
+                                pd.read_csv(file2_3, compression="gzip")], ignore_index=True)
+                d2.to_csv(file2, index=False, compression="gzip")
+            else:
+                print('Downloading and saving second dictionary...')
+                if not os.path.exists(file2_1):
+                    s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750350').content
+                    d2_1 = pd.read_csv(StringIO(s.decode('utf-8')), sep=',')
+                    d2_1.to_csv(file2_1, index=False, compression="gzip")
+                if not os.path.exists(file2_2):
+                    s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750352').content
+                    d2_2 = pd.read_csv(StringIO(s.decode('utf-8')), sep=',')
+                    d2_2.to_csv(file2_2, index=False, compression="gzip")  # Correction d'indentation ici
+                if not os.path.exists(file2_3):
+                    s = requests.get('https://dataverse.harvard.edu/api/access/datafile/4750353').content
+                    d2_3 = pd.read_csv(StringIO(s.decode('utf-8')), sep=',')
+                    d2_3.to_csv(file2_3, index=False, compression="gzip")
+                # Concaténation des trois fichiers en un seul
+                print('Concatenating second dictionary.')
+                d2 = pd.concat([pd.read_csv(file2_1, compression="gzip"),
+                                pd.read_csv(file2_2, compression="gzip"),
+                                pd.read_csv(file2_3, compression="gzip")], ignore_index=True)
+                d2.to_csv(file2, index=False, compression="gzip")
+            
         else:
             print('Second dictionary already exists.')
 
@@ -115,7 +153,6 @@ def read_wgnd(path=False, All=True):
             d3.to_csv(file3, index=False, compression="gzip")
         else:
             print('Third dictionary already exists.')
-
     else:
         # Si 'All' est False, on ne télécharge que le troisième dictionnaire
         if not os.path.exists(file3):
@@ -127,6 +164,7 @@ def read_wgnd(path=False, All=True):
             print('Third dictionary already exists.')
 
     print('All required dictionaries are saved!')
+
 
 
 
